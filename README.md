@@ -87,4 +87,4 @@ Role-based ASP.NET Web Forms project for event listing, booking, and admin manag
 ## Notes
 
 - The project builds successfully in the current workspace.
-- Remove sensitive credentials from `Web.config` before pushing to public GitHub.
+- This repository is prepared for backend implementation, not final production deployment.
