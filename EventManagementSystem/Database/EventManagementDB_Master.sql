@@ -1,0 +1,557 @@
+IF DB_ID('EventManagementDB') IS NULL
+BEGIN
+    CREATE DATABASE EventManagementDB;
+END;
+
+USE EventManagementDB;
+
+IF OBJECT_ID('dbo.Bookings', 'U') IS NOT NULL DROP TABLE dbo.Bookings;
+IF OBJECT_ID('dbo.ContactMessages', 'U') IS NOT NULL DROP TABLE dbo.ContactMessages;
+IF OBJECT_ID('dbo.Events', 'U') IS NOT NULL DROP TABLE dbo.Events;
+IF OBJECT_ID('dbo.Users', 'U') IS NOT NULL DROP TABLE dbo.Users;
+
+CREATE TABLE dbo.Users
+(
+    UserID INT IDENTITY(1,1) PRIMARY KEY,
+    Name NVARCHAR(150) NOT NULL,
+    Email NVARCHAR(200) NOT NULL,
+    PhoneNumber NVARCHAR(20) NULL,
+    [Password] NVARCHAR(MAX) NOT NULL,
+    Role NVARCHAR(50) NOT NULL CONSTRAINT DF_Users_Role DEFAULT ('User'),
+    IsVerified BIT NOT NULL CONSTRAINT DF_Users_IsVerified DEFAULT (1),
+    FailedAttempts INT NOT NULL CONSTRAINT DF_Users_FailedAttempts DEFAULT (0),
+    IsLocked BIT NOT NULL CONSTRAINT DF_Users_IsLocked DEFAULT (0),
+    ResetToken NVARCHAR(200) NULL,
+    TokenExpiry DATETIME NULL,
+    ResetOTP NVARCHAR(10) NULL,
+    OTPExpiry DATETIME NULL
+);
+
+CREATE UNIQUE INDEX UQ_Users_Email ON dbo.Users(Email);
+CREATE UNIQUE INDEX UQ_Users_PhoneNumber ON dbo.Users(PhoneNumber) WHERE PhoneNumber IS NOT NULL;
+
+CREATE TABLE dbo.Events
+(
+    EventID INT IDENTITY(1,1) PRIMARY KEY,
+    EventName NVARCHAR(100) NOT NULL,
+    EventDate DATETIME NOT NULL,
+    Venue NVARCHAR(100) NOT NULL,
+    Price DECIMAL(10,2) NOT NULL CONSTRAINT DF_Events_Price DEFAULT (0),
+    MaxSeats INT NOT NULL,
+    AvailableSeats INT NOT NULL,
+    [Description] NVARCHAR(500) NULL,
+    EventMode NVARCHAR(10) NOT NULL,
+    MeetingLink NVARCHAR(300) NULL,
+    EventType NVARCHAR(50) NOT NULL,
+    PrizePool DECIMAL(10,2) NULL,
+    ContactPhone NVARCHAR(20) NULL,
+    ImagePath NVARCHAR(300) NULL
+);
+
+CREATE INDEX IX_Events_EventDate ON dbo.Events(EventDate);
+
+CREATE TABLE dbo.Bookings
+(
+    BookingID INT IDENTITY(1,1) PRIMARY KEY,
+    UserID INT NOT NULL,
+    EventID INT NOT NULL,
+    SeatsBooked INT NOT NULL,
+    BookingDate DATETIME NOT NULL CONSTRAINT DF_Bookings_BookingDate DEFAULT (GETDATE()),
+    BookingStatus NVARCHAR(20) NOT NULL CONSTRAINT DF_Bookings_BookingStatus DEFAULT ('Pending'),
+    CONSTRAINT FK_Bookings_Users FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID),
+    CONSTRAINT FK_Bookings_Events FOREIGN KEY (EventID) REFERENCES dbo.Events(EventID)
+);
+
+CREATE INDEX IX_Bookings_UserID ON dbo.Bookings(UserID);
+CREATE INDEX IX_Bookings_EventID ON dbo.Bookings(EventID);
+CREATE INDEX IX_Bookings_BookingDate ON dbo.Bookings(BookingDate);
+
+CREATE TABLE dbo.ContactMessages
+(
+    ContactMessageID INT IDENTITY(1,1) PRIMARY KEY,
+    Name NVARCHAR(100) NOT NULL,
+    Email NVARCHAR(200) NOT NULL,
+    Message NVARCHAR(1000) NOT NULL,
+    CreatedOn DATETIME NOT NULL CONSTRAINT DF_ContactMessages_CreatedOn DEFAULT (GETDATE())
+);
+
+CREATE OR ALTER PROCEDURE dbo.sp_UserExists
+    @Email NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT COUNT(1) AS UserCount
+    FROM dbo.Users
+    WHERE LOWER(REPLACE(REPLACE(LTRIM(RTRIM(Email)), ' ', ''), CHAR(160), '')) =
+          LOWER(REPLACE(REPLACE(LTRIM(RTRIM(@Email)), ' ', ''), CHAR(160), ''));
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_UserLogin
+    @Email NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT TOP 1 UserID, Name, Email, [Password], ISNULL(Role, 'User') AS Role
+    FROM dbo.Users
+    WHERE LOWER(REPLACE(REPLACE(LTRIM(RTRIM(Email)), ' ', ''), CHAR(160), '')) =
+          LOWER(REPLACE(REPLACE(LTRIM(RTRIM(@Email)), ' ', ''), CHAR(160), ''));
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterUser
+    @Name NVARCHAR(150),
+    @Email NVARCHAR(200),
+    @PhoneNumber NVARCHAR(20),
+    @Password NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.Users (Name, Email, PhoneNumber, [Password], Role, IsVerified)
+    VALUES (@Name, @Email, @PhoneNumber, @Password, 'User', 1);
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_SetResetOtp
+    @Email NVARCHAR(200),
+    @Otp NVARCHAR(10),
+    @Expiry DATETIME
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE dbo.Users
+    SET ResetOTP = @Otp,
+        OTPExpiry = @Expiry
+    WHERE LOWER(REPLACE(REPLACE(LTRIM(RTRIM(Email)), ' ', ''), CHAR(160), '')) =
+          LOWER(REPLACE(REPLACE(LTRIM(RTRIM(@Email)), ' ', ''), CHAR(160), ''));
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_ResetPasswordWithOtp
+    @Email NVARCHAR(200),
+    @Otp NVARCHAR(10),
+    @Password NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE dbo.Users
+    SET [Password] = @Password,
+        ResetOTP = NULL,
+        OTPExpiry = NULL,
+        ResetToken = NULL,
+        TokenExpiry = NULL
+    WHERE LOWER(REPLACE(REPLACE(LTRIM(RTRIM(Email)), ' ', ''), CHAR(160), '')) =
+          LOWER(REPLACE(REPLACE(LTRIM(RTRIM(@Email)), ' ', ''), CHAR(160), ''))
+      AND ResetOTP = @Otp
+      AND OTPExpiry > GETDATE();
+
+    SELECT @@ROWCOUNT AS AffectedRows;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetEvents
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT EventID,
+           EventName,
+           EventDate,
+           Venue,
+           Price,
+           MaxSeats,
+           AvailableSeats,
+           [Description],
+           EventMode,
+           ISNULL(MeetingLink, '') AS MeetingLink,
+           EventType,
+           PrizePool,
+           ISNULL(ContactPhone, '') AS ContactPhone,
+           ISNULL(ImagePath, '') AS ImagePath
+    FROM dbo.Events
+    ORDER BY EventDate ASC;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetEventById
+    @EventID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT EventID,
+           EventName,
+           EventDate,
+           Venue,
+           Price,
+           MaxSeats,
+           AvailableSeats,
+           [Description],
+           EventMode,
+           ISNULL(MeetingLink, '') AS MeetingLink,
+           EventType,
+           PrizePool,
+           ISNULL(ContactPhone, '') AS ContactPhone,
+           ISNULL(ImagePath, '') AS ImagePath
+    FROM dbo.Events
+    WHERE EventID = @EventID;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_AddEvent
+    @EventName NVARCHAR(100),
+    @EventDate DATETIME,
+    @Venue NVARCHAR(100),
+    @Price DECIMAL(10,2),
+    @MaxSeats INT,
+    @Description NVARCHAR(500),
+    @EventMode NVARCHAR(10),
+    @MeetingLink NVARCHAR(300),
+    @EventType NVARCHAR(50),
+    @PrizePool DECIMAL(10,2),
+    @ContactPhone NVARCHAR(20),
+    @ImagePath NVARCHAR(300)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.Events
+    (
+        EventName,
+        EventDate,
+        Venue,
+        Price,
+        MaxSeats,
+        AvailableSeats,
+        [Description],
+        EventMode,
+        MeetingLink,
+        EventType,
+        PrizePool,
+        ContactPhone,
+        ImagePath
+    )
+    VALUES
+    (
+        @EventName,
+        @EventDate,
+        @Venue,
+        @Price,
+        @MaxSeats,
+        @MaxSeats,
+        @Description,
+        @EventMode,
+        @MeetingLink,
+        @EventType,
+        @PrizePool,
+        @ContactPhone,
+        @ImagePath
+    );
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateEvent
+    @EventID INT,
+    @EventName NVARCHAR(100),
+    @EventDate DATETIME,
+    @Venue NVARCHAR(100),
+    @Price DECIMAL(10,2),
+    @MaxSeats INT,
+    @Description NVARCHAR(500),
+    @EventMode NVARCHAR(10),
+    @MeetingLink NVARCHAR(300),
+    @EventType NVARCHAR(50),
+    @PrizePool DECIMAL(10,2),
+    @ContactPhone NVARCHAR(20),
+    @ImagePath NVARCHAR(300)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE dbo.Events
+    SET EventName = @EventName,
+        EventDate = @EventDate,
+        Venue = @Venue,
+        Price = @Price,
+        MaxSeats = @MaxSeats,
+        [Description] = @Description,
+        EventMode = @EventMode,
+        MeetingLink = @MeetingLink,
+        EventType = @EventType,
+        PrizePool = @PrizePool,
+        ContactPhone = @ContactPhone,
+        ImagePath = @ImagePath
+    WHERE EventID = @EventID;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_DeleteEvent
+    @EventID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DELETE FROM dbo.Events
+    WHERE EventID = @EventID;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetEventNotificationUsers
+    @EventID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT DISTINCT
+        ISNULL(u.Name, 'Participant') AS UserName,
+        ISNULL(u.Email, '') AS Email
+    FROM dbo.Bookings b
+    INNER JOIN dbo.Users u ON u.UserID = b.UserID
+    WHERE b.EventID = @EventID
+      AND ISNULL(b.BookingStatus, 'Pending') <> 'Cancelled';
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_BookEvent
+    @UserEmail NVARCHAR(200),
+    @EventID INT,
+    @Seats INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @UserID INT, @AvailableSeats INT;
+
+    BEGIN TRY
+        BEGIN TRAN;
+
+        SELECT @UserID = UserID
+        FROM dbo.Users
+        WHERE LOWER(LTRIM(RTRIM(Email))) = LOWER(LTRIM(RTRIM(@UserEmail)));
+
+        IF @UserID IS NULL
+            THROW 50001, 'User not found', 1;
+
+        SELECT @AvailableSeats = AvailableSeats
+        FROM dbo.Events
+        WHERE EventID = @EventID;
+
+        IF @AvailableSeats IS NULL
+            THROW 50002, 'Event not found', 1;
+
+        IF @AvailableSeats < @Seats
+            THROW 50003, 'Not enough seats', 1;
+
+        INSERT INTO dbo.Bookings (UserID, EventID, SeatsBooked, BookingDate, BookingStatus)
+        VALUES (@UserID, @EventID, @Seats, GETDATE(), 'Pending');
+
+        UPDATE dbo.Events
+        SET AvailableSeats = AvailableSeats - @Seats
+        WHERE EventID = @EventID;
+
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK;
+        THROW;
+    END CATCH
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetUserBookings
+    @Email NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT b.BookingID,
+           e.EventID,
+           e.EventName,
+           e.EventDate,
+           e.Venue,
+           b.SeatsBooked,
+           ISNULL(b.BookingStatus, 'Pending') AS BookingStatus,
+           b.BookingDate
+    FROM dbo.Bookings b
+    INNER JOIN dbo.Users u ON u.UserID = b.UserID
+    INNER JOIN dbo.Events e ON e.EventID = b.EventID
+    WHERE LOWER(LTRIM(RTRIM(u.Email))) = LOWER(LTRIM(RTRIM(@Email)))
+    ORDER BY b.BookingDate DESC;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetUserBookingSummary
+    @Email NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT COUNT(DISTINCT b.EventID) AS TotalBookings,
+           ISNULL(SUM(e.Price * b.SeatsBooked), 0) AS TotalAmount
+    FROM dbo.Bookings b
+    INNER JOIN dbo.Users u ON u.UserID = b.UserID
+    INNER JOIN dbo.Events e ON e.EventID = b.EventID
+    WHERE LOWER(LTRIM(RTRIM(u.Email))) = LOWER(LTRIM(RTRIM(@Email)))
+      AND ISNULL(b.BookingStatus, 'Pending') <> 'Cancelled';
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_UserCancelBooking
+    @BookingID INT,
+    @Email NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @EventID INT, @Seats INT, @Status NVARCHAR(20);
+
+    BEGIN TRY
+        BEGIN TRAN;
+
+        SELECT @EventID = b.EventID,
+               @Seats = b.SeatsBooked,
+               @Status = ISNULL(b.BookingStatus, 'Pending')
+        FROM dbo.Bookings b
+        INNER JOIN dbo.Users u ON u.UserID = b.UserID
+        WHERE b.BookingID = @BookingID
+          AND LOWER(LTRIM(RTRIM(u.Email))) = LOWER(LTRIM(RTRIM(@Email)));
+
+        IF @EventID IS NULL
+            THROW 50004, 'Booking not found', 1;
+
+        IF @Status = 'Cancelled'
+            THROW 50005, 'Already cancelled', 1;
+
+        UPDATE dbo.Bookings
+        SET BookingStatus = 'Cancelled'
+        WHERE BookingID = @BookingID;
+
+        UPDATE dbo.Events
+        SET AvailableSeats = AvailableSeats + @Seats
+        WHERE EventID = @EventID;
+
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK;
+        THROW;
+    END CATCH
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetAdminBookings
+    @Search NVARCHAR(200) = '',
+    @Filter NVARCHAR(20) = 'all'
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT b.BookingID,
+           ISNULL(u.Name, '-') AS UserName,
+           ISNULL(u.Email, '-') AS Email,
+           ISNULL(u.PhoneNumber, '-') AS Phone,
+           e.EventName,
+           b.SeatsBooked,
+           b.BookingDate,
+           ISNULL(b.BookingStatus, 'Pending') AS BookingStatus
+    FROM dbo.Bookings b
+    LEFT JOIN dbo.Users u ON u.UserID = b.UserID
+    INNER JOIN dbo.Events e ON e.EventID = b.EventID
+    WHERE (ISNULL(u.Name, '') LIKE '%' + @Search + '%'
+        OR ISNULL(u.Email, '') LIKE '%' + @Search + '%'
+        OR e.EventName LIKE '%' + @Search + '%')
+      AND (
+            @Filter = 'all'
+            OR (@Filter = 'today' AND CAST(b.BookingDate AS DATE) = CAST(GETDATE() AS DATE))
+            OR (@Filter = 'recent' AND b.BookingDate >= DATEADD(DAY, -7, GETDATE()))
+      )
+    ORDER BY b.BookingDate DESC;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_GetBookingNotificationDetails
+    @BookingID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT b.SeatsBooked,
+           ISNULL(b.BookingStatus, 'Pending') AS BookingStatus,
+           ISNULL(u.Name, 'User') AS UserName,
+           ISNULL(u.Email, '') AS Email,
+           e.EventName,
+           e.EventDate,
+           e.Venue,
+           e.EventMode,
+           ISNULL(e.MeetingLink, '') AS MeetingLink
+    FROM dbo.Bookings b
+    INNER JOIN dbo.Users u ON u.UserID = b.UserID
+    INNER JOIN dbo.Events e ON e.EventID = b.EventID
+    WHERE b.BookingID = @BookingID;
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_AdminAcceptBooking
+    @BookingID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE dbo.Bookings
+    SET BookingStatus = 'Confirmed'
+    WHERE BookingID = @BookingID
+      AND ISNULL(BookingStatus, 'Pending') <> 'Cancelled';
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_AdminCancelBooking
+    @BookingID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @EventID INT, @Seats INT, @Status NVARCHAR(20);
+
+    BEGIN TRY
+        BEGIN TRAN;
+
+        SELECT @EventID = EventID,
+               @Seats = SeatsBooked,
+               @Status = ISNULL(BookingStatus, 'Pending')
+        FROM dbo.Bookings
+        WHERE BookingID = @BookingID;
+
+        IF @EventID IS NULL
+            THROW 50006, 'Booking not found', 1;
+
+        IF @Status = 'Cancelled'
+            THROW 50007, 'Already cancelled', 1;
+
+        UPDATE dbo.Bookings
+        SET BookingStatus = 'Cancelled'
+        WHERE BookingID = @BookingID;
+
+        UPDATE dbo.Events
+        SET AvailableSeats = AvailableSeats + @Seats
+        WHERE EventID = @EventID;
+
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK;
+        THROW;
+    END CATCH
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_SaveContactMessage
+    @Name NVARCHAR(100),
+    @Email NVARCHAR(200),
+    @Message NVARCHAR(1000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.ContactMessages (Name, Email, Message)
+    VALUES (@Name, @Email, @Message);
+END;
+
+CREATE OR ALTER PROCEDURE dbo.sp_AdminStats
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT (SELECT COUNT(1) FROM dbo.Users) AS TotalUsers,
+           (SELECT COUNT(1) FROM dbo.Events) AS TotalEvents,
+           (SELECT COUNT(1) FROM dbo.Bookings) AS TotalBookings,
+           (SELECT ISNULL(SUM(SeatsBooked), 0) FROM dbo.Bookings) AS TotalTickets;
+END;

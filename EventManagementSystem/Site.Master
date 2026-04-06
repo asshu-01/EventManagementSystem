@@ -1,0 +1,150 @@
+﻿<%@ Master Language="C#" AutoEventWireup="true" CodeBehind="Site.Master.cs" Inherits="EventManagementSystem.SiteMaster" %>
+
+<!DOCTYPE html>
+<html lang="en">
+<head runat="server">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title><%: Page.Title %> - Event Management System</title>
+
+    <link href="~/Content/bootstrap.css" rel="stylesheet" />
+    <link href="~/CSS/style.css" rel="stylesheet" />
+    <style>
+        #form1 .navbar {
+            background-color: #020617 !important;
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+
+        #form1 .navbar .container-fluid {
+            background: transparent !important;
+            padding-left: 8px;
+            padding-right: 8px;
+        }
+
+        #form1 .navbar .navbar-brand,
+        #form1 .navbar .nav-link,
+        #form1 .navbar .nav-link:visited,
+        #form1 .navbar a,
+        #form1 .navbar span {
+            color: #e2e8f0 !important;
+            opacity: 1 !important;
+            font-weight: 600;
+            transition: color 0.2s ease;
+        }
+
+        #form1 .navbar .nav-link:hover,
+        #form1 .navbar .navbar-brand:hover,
+        #form1 .navbar a:hover {
+            color: #38bdf8 !important;
+        }
+
+        #form1 .navbar .nav-link.active {
+            color: #38bdf8 !important;
+            text-decoration: underline;
+        }
+
+        #form1 .navbar .nav-link,
+        #form1 .navbar .navbar-brand {
+            display: inline-block;
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
+        }
+    </style>
+</head>
+
+<body>
+    <form id="form1" runat="server">
+
+        <!-- 🔥 NAVBAR -->
+        <nav class="navbar navbar-expand-sm navbar-dark bg-dark" style="background-color:#020617 !important;">
+            <div class="container-fluid">
+
+                <!-- PROJECT NAME -->
+                <a id="lnkBrand" class="navbar-brand" runat="server" href="~/User/Home.aspx">
+                    Event Management System
+                </a>
+
+                <!-- LEFT SIDE -->
+                <ul class="navbar-nav me-auto">
+                    <li id="liHome" runat="server" class="nav-item">
+                        <a id="lnkHome" class="nav-link" runat="server" href="~/User/Home.aspx">Home</a>
+                    </li>
+
+                    <li id="liMyBookings" runat="server" class="nav-item">
+                        <a id="lnkMyBookings" class="nav-link" runat="server" href="~/User/MyBookings.aspx">My Bookings</a>
+                    </li>
+
+                    <li id="liContact" runat="server" class="nav-item">
+                        <a id="lnkContact" class="nav-link" runat="server" href="~/Contact.aspx">Contact Us</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" runat="server" href="~/About.aspx">About</a>
+                    </li>
+
+                    <li id="liAdminDashboard" runat="server" class="nav-item" visible="false">
+                        <a id="lnkAdminDashboard" class="nav-link" runat="server" href="~/Admin/Dashboard.aspx">Dashboard</a>
+                    </li>
+
+                    <li id="liManageEvents" runat="server" class="nav-item" visible="false">
+                        <a id="lnkManageEvents" class="nav-link" runat="server" href="~/Admin/ManageEvents.aspx">Manage Events</a>
+                    </li>
+
+                    <li id="liViewBookings" runat="server" class="nav-item" visible="false">
+                        <a id="lnkViewBookings" class="nav-link" runat="server" href="~/Admin/ViewBookings.aspx">View Bookings</a>
+                    </li>
+                </ul>
+
+                <!-- RIGHT SIDE -->
+                <ul class="navbar-nav ms-auto">
+
+                    <li class="nav-item">
+                        <asp:LinkButton ID="lblWelcome" runat="server"
+                            CssClass="nav-link nav-login-btn"
+                            CausesValidation="false"
+                            PostBackUrl="~/Auth/Login.aspx"
+                            Visible="false">
+                            Login
+                        </asp:LinkButton>
+                    </li>
+
+                    <!-- LOGOUT -->
+                    <li class="nav-item">
+                        <asp:LinkButton ID="btnLogout" runat="server"
+                            CssClass="nav-link"
+                            CausesValidation="false"
+                            OnClientClick="return confirm('Are you sure you want to logout?');"
+                            OnClick="btnLogout_Click">
+                            Logout
+                        </asp:LinkButton>
+                    </li>
+
+                </ul>
+
+            </div>
+        </nav>
+
+        <!-- MAIN CONTENT -->
+        <div id="mainContainer" runat="server" class="container mt-4">
+            <asp:ContentPlaceHolder ID="MainContent" runat="server"></asp:ContentPlaceHolder>
+        </div>
+
+    </form>
+
+    <script src="<%= ResolveUrl("~/Scripts/jquery-3.7.0.min.js") %>"></script>
+    <script src="<%= ResolveUrl("~/Scripts/bootstrap.min.js") %>"></script>
+    <script src="<%= ResolveUrl("~/Scripts/validation.js") %>"></script>
+    <script>
+        window.addEventListener("pageshow", function (event) {
+            var navType = window.performance && window.performance.navigation
+                ? window.performance.navigation.type
+                : 0;
+
+            if (event.persisted || navType === 2) {
+                window.location.reload();
+            }
+        });
+    </script>
+</body>
+</html>
