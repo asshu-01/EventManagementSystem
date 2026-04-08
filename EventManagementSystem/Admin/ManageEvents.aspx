@@ -1,4 +1,4 @@
-﻿<%@ Page Language="C#" MasterPageFile="~/Site.Master" AutoEventWireup="false" OnLoad="Page_Load" CodeBehind="ManageEvents.aspx.cs" Inherits="EventManagementSystem.Admin.ManageEvents" %>
+<%@ Page Language="C#" MasterPageFile="~/Site.Master" AutoEventWireup="false" OnLoad="Page_Load" CodeBehind="ManageEvents.aspx.cs" Inherits="EventManagementSystem.Admin.ManageEvents" %>
 
 <asp:Content ID="Content1" ContentPlaceHolderID="MainContent" runat="server">
 <div class="saas-page-card admin-page-shell">
@@ -180,11 +180,11 @@
             <asp:TemplateField HeaderText="Banner">
                 <ItemTemplate>
                     <asp:Image ID="imgBanner" runat="server"
-                        ImageUrl='<%# ResolveImageUrl(Eval("ImagePath")) %>'
-                        Visible='<%# HasImage(Eval("ImagePath")) %>'
+                        ImageUrl='<%# string.IsNullOrWhiteSpace(Convert.ToString(Eval("ImagePath"))) ? string.Empty : ResolveUrl(Convert.ToString(Eval("ImagePath"))) %>'
+                        Visible='<%# !string.IsNullOrWhiteSpace(Convert.ToString(Eval("ImagePath"))) %>'
                         CssClass="event-thumb" />
                     <asp:Label ID="lblNoBanner" runat="server" Text="No image"
-                        Visible='<%# !HasImage(Eval("ImagePath")) %>' CssClass="saas-subtext" />
+                        Visible='<%# string.IsNullOrWhiteSpace(Convert.ToString(Eval("ImagePath"))) %>' CssClass="saas-subtext" />
                 </ItemTemplate>
             </asp:TemplateField>
             <asp:BoundField DataField="EventMode" HeaderText="Mode" />
